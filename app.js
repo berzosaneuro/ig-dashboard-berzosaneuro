@@ -173,16 +173,40 @@ function renderResumen(){
   });
   const monthSummary = monthOrder.map(m=>`${monthCounts[m]} en ${m}`).join(', ');
 
+  // Solo se combinan entre plataformas las métricas que realmente son la misma
+  // unidad (seguidores, publicaciones, interacciones). Alcance/impresiones NO
+  // se combinan: Instagram mide "alcance" (cuentas únicas) y Facebook mide
+  // "impresiones" (visualizaciones totales) — sumarlas daría un número falso.
+  const combinedFollowers = IG_FOLLOWERS + fbFansNow;
+  const combinedPosts = POSTS.length + FB_POSTS.length;
+  const combinedInteractions = igInteractionsTotal365 + fbEngTotal;
+
+  wrap.appendChild(el('h2','section-title', 'Todas las plataformas'));
+  wrap.appendChild(el('p','section-sub', 'Solo se suman entre plataformas las métricas que son la misma unidad en Instagram y Facebook — seguidores, publicaciones e interacciones.'));
+  const combinedGrid = el('div','grid cols-3');
+  [
+    ['Seguidores totales', fmt(combinedFollowers), `${fmt(IG_FOLLOWERS)} Instagram + ${fmt(fbFansNow)} Facebook`],
+    ['Publicaciones totales', fmt(combinedPosts), `${fmt(POSTS.length)} Instagram + ${fmt(FB_POSTS.length)} Facebook`],
+    ['Interacciones totales', fmt(combinedInteractions), `${fmt(igInteractionsTotal365)} Instagram + ${fmt(fbEngTotal)} Facebook`],
+  ].forEach(([l,v,s])=>{
+    const c = el('div','card metric');
+    c.innerHTML = `<div class="label">${l}</div><div class="value">${v}</div><div class="sub">${s}</div>`;
+    combinedGrid.appendChild(c);
+  });
+  wrap.appendChild(combinedGrid);
+  wrap.appendChild(el('div','note','TikTok todavía no suma a estos totales — 0 seguidores y 0 publicaciones, cuenta sin contenido por ahora.'));
+
+  wrap.appendChild(el('h2','section-title','Por plataforma'));
   const grid = el('div','grid cols-4');
   const metrics = [
     ['Seguidores IG actuales', fmt(IG_FOLLOWERS), 'Dato real · user_info'],
-    ['Publicaciones totales (histórico)', fmt(IG_MEDIA_COUNT), monthSummary],
-    ['Alcance total (365 días)', fmt(igReachTotal365), 'Suma diaria reach_1d'],
-    ['Reproducciones totales (365 días)', fmt(igViewsTotal365), 'Incluye posts+reels+stories'],
-    ['Interacciones totales (365 días)', fmt(igInteractionsTotal365), 'likes+comments+saves+shares'],
-    ['Cuentas alcanzadas (365 días)', fmt(igAccountsEngaged365), 'accounts_engaged'],
-    ['Engagement medio / alcance', avgEngRate.toFixed(1)+'%', `Sobre las ${POSTS.length} publicaciones`],
+    ['Publicaciones IG (histórico)', fmt(IG_MEDIA_COUNT), monthSummary],
+    ['Alcance total IG (365 días)', fmt(igReachTotal365), 'Suma diaria reach_1d · solo Instagram'],
+    ['Reproducciones totales IG (365 días)', fmt(igViewsTotal365), 'Incluye posts+reels+stories · solo Instagram'],
+    ['Engagement medio / alcance (IG)', avgEngRate.toFixed(1)+'%', `Sobre las ${POSTS.length} publicaciones de Instagram`],
     ['Seguidores en Facebook', fmt(fbFansNow), `Desde ${fmt(fbFansStart)} el ${fmtDate(FB_DAILY[0].date)}`],
+    ['Impresiones totales FB', fmt(fbImpressionsTotal), `Sobre las ${fmt(FB_POSTS.length)} publicaciones de Facebook`],
+    ['TikTok', '—', '0 seguidores, 0 vídeos — sin datos todavía'],
   ];
   metrics.forEach(([label,value,sub])=>{
     const c = el('div','card metric');
