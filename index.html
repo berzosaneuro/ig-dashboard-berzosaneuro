@@ -43,6 +43,12 @@
   .tab-btn.active{background:var(--blue);border-color:var(--blue);color:#fff;}
   section.tab{display:none;padding-top:18px;}
   section.tab.active{display:block;}
+  .sub-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+  .subtab-btn{font-size:12px;font-weight:500;padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,0.02);color:var(--text2);cursor:pointer;white-space:nowrap;transition:.15s;}
+  .subtab-btn:hover{background:rgba(255,255,255,0.05);color:var(--text);}
+  .subtab-btn.active{background:rgba(0,102,255,0.15);border-color:var(--blue);color:var(--blue-hover);}
+  .subtab-panel{display:none;}
+  .subtab-panel.active{display:block;}
   .grid{display:grid;gap:14px;}
   .grid.cols-4{grid-template-columns:repeat(4,1fr);}
   .grid.cols-3{grid-template-columns:repeat(3,1fr);}

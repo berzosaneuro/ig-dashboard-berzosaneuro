@@ -53,7 +53,7 @@ function renderApp(){
   TABS.forEach((t,i)=>{
     const sec = el('section','tab'+(i===0?' active':''));
     sec.id = 'tab-'+t.id;
-    sec.appendChild(t.render());
+    sec.appendChild(t.subtabs ? renderTabGroup(t) : t.render());
     tabsWrap.appendChild(sec);
   });
   app.appendChild(tabsWrap);
@@ -85,18 +85,21 @@ function renderFooter(){
 
 const TABS = [
   {id:'resumen', label:'Resumen ejecutivo', render: renderResumen},
-  {id:'evolucion', label:'Evolución', render: renderEvolucion},
-  {id:'multiplataforma', label:'Instagram vs Facebook', render: renderMultiplataforma},
+  {id:'instagram', label:'Instagram', subtabs: [
+    {id:'ig-evolucion', label:'Evolución', render: renderEvolucion},
+    {id:'ig-contenido', label:'Contenido', render: renderContenido},
+    {id:'ig-puntuacion', label:'Sistema de puntuación', render: renderPuntuacion},
+    {id:'ig-mejores', label:'Mejores reels', render: renderMejores},
+    {id:'ig-peores', label:'Peores reels', render: renderPeores},
+    {id:'ig-formatos', label:'Formatos', render: renderFormatos},
+    {id:'ig-ganchos', label:'Ganchos y temas', render: renderGanchos},
+    {id:'ig-horarios', label:'Horarios', render: renderHorarios},
+    {id:'ig-audiencia', label:'Audiencia', render: renderAudiencia},
+    {id:'ig-conversion', label:'Conversión', render: renderConversion},
+  ]},
+  {id:'facebook', label:'Facebook', render: renderFacebook},
   {id:'tiktok', label:'TikTok', render: renderTikTok},
-  {id:'contenido', label:'Contenido', render: renderContenido},
-  {id:'puntuacion', label:'Sistema de puntuación', render: renderPuntuacion},
-  {id:'mejores', label:'Mejores reels', render: renderMejores},
-  {id:'peores', label:'Peores reels', render: renderPeores},
-  {id:'formatos', label:'Formatos', render: renderFormatos},
-  {id:'ganchos', label:'Ganchos y temas', render: renderGanchos},
-  {id:'horarios', label:'Horarios', render: renderHorarios},
-  {id:'audiencia', label:'Audiencia', render: renderAudiencia},
-  {id:'conversion', label:'Conversión', render: renderConversion},
+  {id:'comparativa', label:'Comparativa', render: renderMultiplataforma},
   {id:'oportunidades', label:'Oportunidades', render: renderOportunidades},
   {id:'plan', label:'Plan de acción', render: renderPlan},
   {id:'calendario', label:'Calendario 30 días', render: renderCalendario},
@@ -118,6 +121,32 @@ function renderTabs(){
     nav.appendChild(btn);
   });
   return nav;
+}
+
+// A top-level tab that groups several sub-sections under one nav button
+// (used for Instagram, which has far more detail sections than any other
+// platform) — switching is scoped to this group so it doesn't interfere
+// with the top-level tab nav/state.
+function renderTabGroup(item){
+  const wrap = el('div','tab-group');
+  const subNav = el('div','sub-tabs');
+  const panels = el('div');
+  item.subtabs.forEach((st,i)=>{
+    const btn = el('button','subtab-btn'+(i===0?' active':''), st.label);
+    const panel = el('div','subtab-panel'+(i===0?' active':''));
+    panel.appendChild(st.render());
+    btn.onclick = ()=>{
+      subNav.querySelectorAll('.subtab-btn').forEach(b=>b.classList.remove('active'));
+      panels.querySelectorAll('.subtab-panel').forEach(p=>p.classList.remove('active'));
+      btn.classList.add('active');
+      panel.classList.add('active');
+    };
+    subNav.appendChild(btn);
+    panels.appendChild(panel);
+  });
+  wrap.appendChild(subNav);
+  wrap.appendChild(panels);
+  return wrap;
 }
 
 // ---------- RESUMEN ----------
@@ -246,8 +275,8 @@ function drawEvolutionChart(){
 // ---------- MULTIPLATAFORMA ----------
 function renderMultiplataforma(){
   const wrap = el('div');
-  wrap.appendChild(el('h2','section-title','Instagram vs Facebook: el mismo contenido, resultados muy distintos'));
-  wrap.appendChild(el('p','section-sub','Los 6 reels que también fueron publicados en la página de Facebook "Berzosa NEURO", comparando alcance/impresiones reales en cada plataforma.'));
+  wrap.appendChild(el('h2','section-title','Comparativa: Instagram vs Facebook vs TikTok'));
+  wrap.appendChild(el('p','section-sub','Los 6 reels que también fueron publicados en la página de Facebook "Berzosa NEURO", comparando alcance/impresiones reales en cada plataforma. TikTok se incluye para referencia, pero todavía no tiene publicaciones que comparar.'));
 
   const compare = el('div','card');
   compare.innerHTML = `<div class="platform-compare">
@@ -257,11 +286,9 @@ function renderMultiplataforma(){
   </div>`;
   wrap.appendChild(compare);
 
-  wrap.appendChild(el('div','note insight',`🔎 Hallazgo principal del dashboard: en las 6 fechas donde se publicó el mismo reel en ambas plataformas, Facebook generó más impresiones que Instagram alcance en <b>las 6 de 6 ocasiones</b> — no es un caso aislado, es un patrón consistente. El caso más extremo es el reel del 27 de julio: 189 de alcance en Instagram frente a 70.876 impresiones en Facebook (375 veces más), que además impulsó que la página de Facebook pasara de 28 a 754 seguidores en un mes.`));
+  wrap.appendChild(el('div','note na','TikTok: 0 publicaciones — cuenta conectada pero sin contenido todavía, no hay nada que comparar en esta plataforma por ahora.'));
 
-  const card = el('div','card');
-  card.innerHTML = `<div class="chart-box tall"><canvas id="fbChart"></canvas></div>`;
-  wrap.appendChild(card);
+  wrap.appendChild(el('div','note insight',`🔎 Hallazgo principal del dashboard: en las 6 fechas donde se publicó el mismo reel en ambas plataformas, Facebook generó más impresiones que Instagram alcance en <b>las 6 de 6 ocasiones</b> — no es un caso aislado, es un patrón consistente. El caso más extremo es el reel del 27 de julio: 189 de alcance en Instagram frente a 70.876 impresiones en Facebook (375 veces más), que además impulsó que la página de Facebook pasara de 28 a 754 seguidores en un mes.`));
 
   const tableWrap = el('div','card');
   tableWrap.style.marginTop = '14px';
@@ -304,6 +331,50 @@ function drawFbChart(){
       }
     }
   });
+}
+
+// ---------- FACEBOOK ----------
+const fbPostsSorted = [...FB_POSTS].sort((a,b)=>(b.post_engagements||0)-(a.post_engagements||0));
+function renderFacebook(){
+  const wrap = el('div');
+  wrap.appendChild(el('h2','section-title','Facebook'));
+  wrap.appendChild(el('p','section-sub','Página "Berzosa NEURO" — datos reales de Windsor.ai (facebook_organic).'));
+
+  const grid = el('div','grid cols-4');
+  [
+    ['Seguidores actuales', fmt(fbFansNow), `Desde ${fmt(fbFansStart)} al inicio del periodo`],
+    ['Publicaciones (histórico)', fmt(FB_POSTS.length), ''],
+    ['Impresiones totales', fmt(fbImpressionsTotal), 'Suma de todas las publicaciones'],
+    ['Interacciones totales', fmt(fbEngTotal), 'Reacciones + comentarios + clics'],
+  ].forEach(([l,v,s])=>{
+    const c = el('div','card metric');
+    c.innerHTML = `<div class="label">${l}</div><div class="value">${v}</div><div class="sub">${s}</div>`;
+    grid.appendChild(c);
+  });
+  wrap.appendChild(grid);
+
+  const card = el('div','card');
+  card.innerHTML = `<div class="chart-box tall"><canvas id="fbChart"></canvas></div>`;
+  wrap.appendChild(card);
+
+  const tableWrap = el('div','card');
+  tableWrap.style.marginTop = '14px';
+  tableWrap.innerHTML = `<h3 style="font-size:14px;margin-bottom:10px;">Publicaciones ordenadas por interacciones</h3>`;
+  const tw = el('div','table-wrap');
+  const rows = fbPostsSorted.map(p=>`<tr>
+    <td>${fmtDate(p.post_created_time)}</td>
+    <td>${p.type||'—'}</td>
+    <td>${fmt(p.post_impressions||0)}</td>
+    <td>${fmt(p.post_engagements||0)}</td>
+    <td>${fmt(p.post_reactions_total||0)}</td>
+    <td>${fmt(p.post_comments_total||0)}</td>
+    <td>${p.permalink_url ? `<a href="${p.permalink_url}" target="_blank" rel="noopener">Ver</a>` : '—'}</td>
+  </tr>`).join('');
+  tw.innerHTML = `<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Impresiones</th><th>Interacciones</th><th>Reacciones</th><th>Comentarios</th><th>Enlace</th></tr></thead><tbody>${rows}</tbody></table>`;
+  tableWrap.appendChild(tw);
+  wrap.appendChild(tableWrap);
+
+  return wrap;
 }
 
 // ---------- TIKTOK ----------
