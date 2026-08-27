@@ -80,6 +80,8 @@ function loadScript(src) {
     return;
   }
 
+  document.getElementById('root').innerHTML = '';
+
   try {
     await loadScript('app.js');
   } catch (e) {
