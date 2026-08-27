@@ -67,7 +67,7 @@ function renderHeader(){
   h.innerHTML = `<div class="inner">
     <div class="brand">
       <h1>Dashboard de Contenido · <span>Berzosa Neuro</span></h1>
-      <p>@${IG_USERNAME} · Instagram + Facebook · Datos reales vía Windsor.ai</p>
+      <p>@${IG_USERNAME} · Instagram + Facebook + TikTok · Datos reales vía Windsor.ai</p>
     </div>
     <div class="badges">
       <span class="badge ig">📷 Instagram: ${IG_FOLLOWERS} seguidores</span>
@@ -80,7 +80,7 @@ function renderHeader(){
 }
 
 function renderFooter(){
-  return el('footer','foot','Dashboard generado a partir de datos reales de Windsor.ai (Instagram + Facebook orgánico). Las cifras marcadas como "no disponible" no existen en la fuente conectada y no han sido inventadas. TikTok pendiente de conexión.');
+  return el('footer','foot','Dashboard generado a partir de datos reales de Windsor.ai (Instagram + Facebook + TikTok). Las cifras marcadas como "no disponible" no existen en la fuente conectada y no han sido inventadas.');
 }
 
 const TABS = [
@@ -155,16 +155,34 @@ function renderResumen(){
   wrap.appendChild(el('h2','section-title','Resumen ejecutivo'));
   wrap.appendChild(el('p','section-sub',`Estado general de la cuenta a fecha de hoy (${today.toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'})}). Todas las cifras de esta sección son datos reales de Windsor.ai, sin cálculos añadidos salvo donde se indica.`));
 
+  // Cifras calculadas en vivo a partir de POSTS/FB_DAILY — nunca hardcodeadas,
+  // para que no se desajusten de la realidad según entren nuevas sincronizaciones.
+  const postsWithCaption = POSTS.filter(p=>p.media_caption);
+  const postsWithoutCaptionCount = POSTS.length - postsWithCaption.length;
+  const top3 = postsSorted.slice(0,3);
+  const captionsInTop3 = top3.filter(p=>p.media_caption).length;
+  const weeksSinceLastPost = Math.round(daysSinceLastPost/7);
+  const weekWord = weeksSinceLastPost===1?'semana':'semanas';
+  const dayWord = daysSinceLastPost===1?'día':'días';
+
+  const monthCounts = {}, monthOrder = [];
+  [...POSTS].sort((a,b)=>a.timestamp<b.timestamp?-1:1).forEach(p=>{
+    const m = new Date(p.timestamp).toLocaleDateString('es-ES',{month:'long'});
+    if(!monthCounts[m]){ monthCounts[m]=0; monthOrder.push(m); }
+    monthCounts[m]++;
+  });
+  const monthSummary = monthOrder.map(m=>`${monthCounts[m]} en ${m}`).join(', ');
+
   const grid = el('div','grid cols-4');
   const metrics = [
     ['Seguidores IG actuales', fmt(IG_FOLLOWERS), 'Dato real · user_info'],
-    ['Publicaciones totales (histórico)', fmt(IG_MEDIA_COUNT), '3 en marzo, 7 en jul-ago'],
+    ['Publicaciones totales (histórico)', fmt(IG_MEDIA_COUNT), monthSummary],
     ['Alcance total (365 días)', fmt(igReachTotal365), 'Suma diaria reach_1d'],
     ['Reproducciones totales (365 días)', fmt(igViewsTotal365), 'Incluye posts+reels+stories'],
     ['Interacciones totales (365 días)', fmt(igInteractionsTotal365), 'likes+comments+saves+shares'],
     ['Cuentas alcanzadas (365 días)', fmt(igAccountsEngaged365), 'accounts_engaged'],
-    ['Engagement medio / alcance', avgEngRate.toFixed(1)+'%', 'Sobre las 10 publicaciones'],
-    ['Seguidores en Facebook', fmt(fbFansNow), `Desde ${fbFansStart} hace 3 meses`],
+    ['Engagement medio / alcance', avgEngRate.toFixed(1)+'%', `Sobre las ${POSTS.length} publicaciones`],
+    ['Seguidores en Facebook', fmt(fbFansNow), `Desde ${fmt(fbFansStart)} el ${fmtDate(FB_DAILY[0].date)}`],
   ];
   metrics.forEach(([label,value,sub])=>{
     const c = el('div','card metric');
@@ -173,7 +191,7 @@ function renderResumen(){
   });
   wrap.appendChild(grid);
 
-  wrap.appendChild(el('div','note warn','⚠️ Muestra muy pequeña: 10 publicaciones y 50 seguidores en Instagram. Los patrones "estadísticos" de este dashboard tienen validez limitada — se indica el tamaño de muestra en cada sección y se prioriza lo que es concreto y verificable sobre lo especulativo.'));
+  wrap.appendChild(el('div','note warn',`⚠️ Muestra muy pequeña: ${POSTS.length} publicaciones y ${fmt(IG_FOLLOWERS)} seguidores en Instagram. Los patrones "estadísticos" de este dashboard tienen validez limitada — se indica el tamaño de muestra en cada sección y se prioriza lo que es concreto y verificable sobre lo especulativo.`));
 
   const two = el('div','two-col');
 
@@ -183,7 +201,9 @@ function renderResumen(){
   ul1.innerHTML = `
     <li><b>Facebook ha despegado con la misma pieza de contenido</b>: el reel del 27 de julio pasó de 189 de alcance en Instagram a 70.876 impresiones en Facebook, y la página ganó ~700 seguidores en 48 horas.</li>
     <li><b>La cuenta volvió a publicar en julio-agosto</b> tras un parón de 4 meses (última publicación previa: 24 de marzo).</li>
-    <li><b>Los 2 posts con caption real</b> (los únicos con texto de las 10 publicaciones) están entre las 3 puntuaciones más altas del ranking.</li>
+    <li>${postsWithCaption.length>0
+        ? `<b>${postsWithCaption.length===1?'El único post':'Los '+postsWithCaption.length+' posts'} con caption real</b> (${postsWithCaption.length===1?'el único':'los únicos'} con texto de las ${POSTS.length} publicaciones) ${captionsInTop3>0?`${captionsInTop3===postsWithCaption.length?'están':'está'} entre las ${top3.length} puntuaciones más altas del ranking.`:'no está entre las puntuaciones más altas del ranking ahora mismo.'}`
+        : `<b>Ninguna publicación tiene caption todavía</b> — no hay datos suficientes para relacionar texto con puntuación.`}</li>
   `;
   left.appendChild(ul1);
   two.appendChild(left);
@@ -192,8 +212,8 @@ function renderResumen(){
   right.innerHTML = `<h3 style="font-size:15px;margin-bottom:10px;">Los 3 problemas detectados</h3>`;
   const ul2 = el('ul','clean');
   ul2.innerHTML = `
-    <li><b>3 semanas sin publicar</b> (última publicación: 6 de agosto). El impulso de Facebook se está enfriando sin contenido nuevo que lo sostenga.</li>
-    <li><b>7 de las 10 publicaciones no tienen caption</b> (campo vacío en Windsor.ai) — sin texto no hay gancho, contexto ni SEO de búsqueda en Instagram.</li>
+    <li><b>${weeksSinceLastPost} ${weekWord} sin publicar</b> (última publicación: ${fmtDate(lastPostDate)}, hace ${daysSinceLastPost} ${dayWord}). El impulso de Facebook se está enfriando sin contenido nuevo que lo sostenga.</li>
+    <li><b>${postsWithoutCaptionCount} de las ${POSTS.length} publicaciones no tienen caption</b> (campo vacío en Windsor.ai) — sin texto no hay gancho, contexto ni SEO de búsqueda en Instagram.</li>
     <li><b>El reel con más alcance en Instagram tras el viral (133 de alcance) tuvo un 92,7% de abandono en los primeros 3 segundos</b> — consiguió distribución pero perdió a casi toda la audiencia de inmediato.</li>
   `;
   right.appendChild(ul2);
@@ -206,7 +226,7 @@ function renderResumen(){
   const ul3 = el('ul','clean');
   ul3.innerHTML = `
     <li>Publicar el mismo contenido en Instagram y Facebook simultáneamente — Facebook ya ha demostrado tener alcance orgánico muy superior para este contenido.</li>
-    <li>Escribir caption con gancho e hilo de texto en cada publicación — la señal, aunque en solo 3 casos, es consistente: caption real = mejor puntuación.</li>
+    <li>Escribir caption con gancho e hilo de texto en cada publicación — la señal, aunque en solo ${postsWithCaption.length} caso${postsWithCaption.length===1?'':'s'}, es consistente: caption real = mejor puntuación.</li>
     <li>Retomar la cadencia de publicación antes de perder el impulso ganado en Facebook la última semana de julio.</li>
   `;
   opp.appendChild(ul3);
@@ -216,7 +236,7 @@ function renderResumen(){
   concl.style.marginTop='14px';
   concl.innerHTML = `<h3 style="font-size:15px;margin-bottom:8px;">Conclusión general</h3>
   <p style="font-size:13.5px;line-height:1.6;color:var(--text);margin:0 0 10px;">
-  La cuenta está en una fase muy temprana (50 seguidores en Instagram, 10 publicaciones en un año) pero acaba de recibir una señal de mercado fuerte y real: un solo reel, republicado en Facebook, generó más de 700 seguidores nuevos en 2 días. Eso no es una métrica de vanidad — es la prueba de que el contenido (neurociencia aplicada, metacognición) conecta cuando llega a suficiente gente. El cuello de botella no es la calidad del contenido, es la distribución y la consistencia: 3 semanas de silencio justo después del mejor resultado del año.</p>
+  La cuenta está en una fase muy temprana (${fmt(IG_FOLLOWERS)} seguidores en Instagram, ${POSTS.length} publicaciones en un año) pero acaba de recibir una señal de mercado fuerte y real: un solo reel, republicado en Facebook, generó más de 700 seguidores nuevos en 2 días. Eso no es una métrica de vanidad — es la prueba de que el contenido (neurociencia aplicada, metacognición) conecta cuando llega a suficiente gente. El cuello de botella no es la calidad del contenido, es la distribución y la consistencia: ${weeksSinceLastPost} ${weekWord} de silencio justo después del mejor resultado del año.</p>
   <p style="font-size:13.5px;line-height:1.6;"><b style="color:var(--blue-hover);">Acción más importante ahora mismo:</b> publicar esta semana, en Instagram y Facebook a la vez, y no dejar pasar más de 3-4 días sin publicación durante al menos las próximas 4 semanas.</p>`;
   wrap.appendChild(concl);
 
@@ -381,7 +401,7 @@ function renderFacebook(){
 function renderTikTok(){
   const wrap = el('div');
   wrap.appendChild(el('h2','section-title','TikTok'));
-  wrap.appendChild(el('p','section-sub','Cuenta conectada a Windsor.ai hoy mismo (@berzosa.neuro).'));
+  wrap.appendChild(el('p','section-sub','Cuenta conectada a Windsor.ai (@berzosa.neuro).'));
   wrap.appendChild(el('div','note na','Estado real de la cuenta: 0 seguidores, 0 vídeos publicados, 0 me gusta totales. No hay ninguna publicación que analizar todavía — no se puede generar ningún ranking, puntuación ni recomendación específica sin datos, y no se van a inventar.'));
   const grid = el('div','grid cols-3');
   [['Seguidores','0',''],['Vídeos publicados','0',''],['Me gusta totales','0','']].forEach(([l,v,s])=>{
