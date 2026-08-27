@@ -1,0 +1,9 @@
+{
+  "name": "berzosa-ig-dashboard-live",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dashboard de contenido (IG/FB/TikTok) de @berzosa.neuro, con sincronizacion diaria automatica desde Windsor.ai hacia Supabase.",
+  "engines": {
+    "node": ">=18"
+  }
+}
