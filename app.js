@@ -43,6 +43,14 @@ const avg = (arr,f)=> arr.length? sum(arr,f)/arr.length : 0;
 const reelsBestByReach = [...reels].sort((a,b)=>b.media_reach-a.media_reach);
 const reelsWorst = [...reels].sort((a,b)=>a.score-b.score);
 function el(tag, cls, html){ const e=document.createElement(tag); if(cls) e.className=cls; if(html!==undefined) e.innerHTML=html; return e; }
+// Section title with a platform-colored accent bar (falls back to the default
+// blue/cyan gradient defined in CSS when no colors are passed).
+function sectionTitle(text, accentA, accentB){
+  const h = el('h2','section-title', text);
+  if(accentA) h.style.setProperty('--accent-a', accentA);
+  if(accentB) h.style.setProperty('--accent-b', accentB);
+  return h;
+}
 
 function renderApp(){
   const root = document.getElementById('root');
@@ -59,7 +67,7 @@ function renderApp(){
   app.appendChild(tabsWrap);
   app.appendChild(renderFooter());
   root.appendChild(app);
-  requestAnimationFrame(()=>{ drawEvolutionChart(); drawFormatChart(); drawFbChart(); });
+  requestAnimationFrame(()=>{ drawEvolutionChart(); drawFormatChart(); drawFormatMixChart(); drawFbChart(); drawFollowersDoughnut(); });
 }
 
 function renderHeader(){
@@ -72,6 +80,7 @@ function renderHeader(){
     <div class="badges">
       <span class="badge ig">📷 Instagram: ${IG_FOLLOWERS} seguidores</span>
       <span class="badge fb">👍 Facebook: ${fmt(fbFansNow)} seguidores</span>
+      <span class="badge tiktok">🎵 TikTok: sin datos</span>
       <span class="badge">Última publicación: hace ${daysSinceLastPost} días</span>
       ${window.LAST_SYNC_AT ? `<span class="badge">🔄 Datos actualizados: ${fmtDateTime(window.LAST_SYNC_AT)}</span>` : ''}
     </div>
@@ -194,6 +203,13 @@ function renderResumen(){
     combinedGrid.appendChild(c);
   });
   wrap.appendChild(combinedGrid);
+
+  const doughnutCard = el('div','card');
+  doughnutCard.style.marginTop = '14px';
+  doughnutCard.innerHTML = `<h3 style="font-size:15px;margin-bottom:10px;">Distribución de seguidores por plataforma</h3>
+    <div class="chart-box" style="max-width:340px;margin:0 auto;"><canvas id="followersDoughnut"></canvas></div>`;
+  wrap.appendChild(doughnutCard);
+
   wrap.appendChild(el('div','note','TikTok todavía no suma a estos totales — 0 seguidores y 0 publicaciones, cuenta sin contenido por ahora.'));
 
   wrap.appendChild(el('h2','section-title','Por plataforma'));
@@ -266,6 +282,21 @@ function renderResumen(){
 
   return wrap;
 }
+function drawFollowersDoughnut(){
+  const ctx = document.getElementById('followersDoughnut');
+  if(!ctx) return;
+  new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels:[`Instagram (${fmt(IG_FOLLOWERS)})`, `Facebook (${fmt(fbFansNow)})`],
+      datasets:[{ data:[IG_FOLLOWERS, fbFansNow], backgroundColor:['#E1306C','#1877F2'], borderColor:'#0F0F0F', borderWidth:3 }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, cutout:'62%',
+      plugins:{legend:{position:'bottom', labels:{color:'#94A3B8', font:{size:11}, padding:12}}}
+    }
+  });
+}
 
 // ---------- EVOLUCION ----------
 function renderEvolucion(){
@@ -319,7 +350,7 @@ function drawEvolutionChart(){
 // ---------- MULTIPLATAFORMA ----------
 function renderMultiplataforma(){
   const wrap = el('div');
-  wrap.appendChild(el('h2','section-title','Comparativa: Instagram vs Facebook vs TikTok'));
+  wrap.appendChild(sectionTitle('Comparativa: Instagram vs Facebook vs TikTok', 'var(--ig)', 'var(--fb)'));
   wrap.appendChild(el('p','section-sub','Los 6 reels que también fueron publicados en la página de Facebook "Berzosa NEURO", comparando alcance/impresiones reales en cada plataforma. TikTok se incluye para referencia, pero todavía no tiene publicaciones que comparar.'));
 
   const compare = el('div','card');
@@ -381,7 +412,7 @@ function drawFbChart(){
 const fbPostsSorted = [...FB_POSTS].sort((a,b)=>(b.post_engagements||0)-(a.post_engagements||0));
 function renderFacebook(){
   const wrap = el('div');
-  wrap.appendChild(el('h2','section-title','Facebook'));
+  wrap.appendChild(sectionTitle('Facebook', 'var(--fb)', 'var(--fb2)'));
   wrap.appendChild(el('p','section-sub','Página "Berzosa NEURO" — datos reales de Windsor.ai (facebook_organic).'));
 
   const grid = el('div','grid cols-4');
@@ -424,7 +455,7 @@ function renderFacebook(){
 // ---------- TIKTOK ----------
 function renderTikTok(){
   const wrap = el('div');
-  wrap.appendChild(el('h2','section-title','TikTok'));
+  wrap.appendChild(sectionTitle('TikTok', 'var(--tiktok)', 'var(--tiktok2)'));
   wrap.appendChild(el('p','section-sub','Cuenta conectada a Windsor.ai (@berzosa.neuro).'));
   wrap.appendChild(el('div','note na','Estado real de la cuenta: 0 seguidores, 0 vídeos publicados, 0 me gusta totales. No hay ninguna publicación que analizar todavía — no se puede generar ningún ranking, puntuación ni recomendación específica sin datos, y no se van a inventar.'));
   const grid = el('div','grid cols-3');
@@ -616,9 +647,14 @@ function renderFormatos(){
   wrap.appendChild(el('h2','section-title','Comparación de formatos'));
   wrap.appendChild(el('p','section-sub',`Reels (n=${reels.length}) vs Carruseles (n=${carousels.length}). No hay suficientes datos de imágenes sueltas, historias ni directos en el periodo analizado — no disponible.`));
 
+  const chartsRow = el('div','two-col');
   const card = el('div','card');
   card.innerHTML = `<div class="chart-box"><canvas id="fmtChart"></canvas></div>`;
-  wrap.appendChild(card);
+  chartsRow.appendChild(card);
+  const pieCard = el('div','card');
+  pieCard.innerHTML = `<h3 style="font-size:15px;margin-bottom:10px;">Mezcla de formatos</h3><div class="chart-box" style="max-width:280px;margin:0 auto;"><canvas id="fmtMixChart"></canvas></div>`;
+  chartsRow.appendChild(pieCard);
+  wrap.appendChild(chartsRow);
 
   const grid = el('div','grid cols-2');
   grid.style.marginTop='14px';
@@ -656,6 +692,21 @@ function drawFormatChart(){
       responsive:true, maintainAspectRatio:false,
       plugins:{legend:{labels:{color:'#94A3B8'}}},
       scales:{ x:{ticks:{color:'#94A3B8'}, grid:{display:false}}, y:{ticks:{color:'#64748B'}, grid:{color:'rgba(255,255,255,.04)'}} }
+    }
+  });
+}
+function drawFormatMixChart(){
+  const ctx = document.getElementById('fmtMixChart');
+  if(!ctx) return;
+  new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels:[`Reels (${reels.length})`, `Carruseles (${carousels.length})`],
+      datasets:[{ data:[reels.length, carousels.length], backgroundColor:['#06B6D4','#8b5cf6'], borderColor:'#0F0F0F', borderWidth:3 }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, cutout:'62%',
+      plugins:{legend:{position:'bottom', labels:{color:'#94A3B8', font:{size:11}, padding:12}}}
     }
   });
 }
