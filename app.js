@@ -67,7 +67,10 @@ function renderApp(){
   app.appendChild(tabsWrap);
   app.appendChild(renderFooter());
   root.appendChild(app);
-  requestAnimationFrame(()=>{ drawEvolutionChart(); drawFormatChart(); drawFormatMixChart(); drawFbChart(); drawFollowersDoughnut(); });
+  requestAnimationFrame(()=>{
+    drawEvolutionChart(); drawFormatChart(); drawFormatMixChart(); drawFbChart(); drawFollowersDoughnut();
+    drawCrossChart(); drawWeightsChart(); drawScoresChart(); drawHorariosChart(); drawOppsChart(); drawIdeasChart();
+  });
 }
 
 function renderHeader(){
@@ -351,7 +354,7 @@ function drawEvolutionChart(){
 function renderMultiplataforma(){
   const wrap = el('div');
   wrap.appendChild(sectionTitle('Comparativa: Instagram vs Facebook vs TikTok', 'var(--ig)', 'var(--fb)'));
-  wrap.appendChild(el('p','section-sub','Los 6 reels que también fueron publicados en la página de Facebook "Berzosa NEURO", comparando alcance/impresiones reales en cada plataforma. TikTok se incluye para referencia, pero todavía no tiene publicaciones que comparar.'));
+  wrap.appendChild(el('p','section-sub',`${CROSS.length} publicaci${CROSS.length===1?'ón':'ones'} que se hicieron el mismo día en Instagram y en Facebook (con una única publicación por plataforma ese día, para poder emparejarlas con certeza), comparando alcance/impresiones reales en cada plataforma. TikTok se incluye para referencia, pero todavía no tiene publicaciones que comparar.`));
 
   const compare = el('div','card');
   compare.innerHTML = `<div class="platform-compare">
@@ -362,8 +365,18 @@ function renderMultiplataforma(){
   wrap.appendChild(compare);
 
   wrap.appendChild(el('div','note na','TikTok: 0 publicaciones — cuenta conectada pero sin contenido todavía, no hay nada que comparar en esta plataforma por ahora.'));
+  wrap.appendChild(el('div','note','Días con varias publicaciones el mismo día en una u otra plataforma (p. ej. el 6 de agosto) se excluyen de esta comparativa a propósito: sin un identificador que vincule cada reel de Instagram con su republicación en Facebook, emparejar publicaciones de un día con múltiples posts sería adivinar, no medir.'));
 
-  wrap.appendChild(el('div','note insight',`🔎 Hallazgo principal del dashboard: en las 6 fechas donde se publicó el mismo reel en ambas plataformas, Facebook generó más impresiones que Instagram alcance en <b>las 6 de 6 ocasiones</b> — no es un caso aislado, es un patrón consistente. El caso más extremo es el reel del 27 de julio: 189 de alcance en Instagram frente a 70.876 impresiones en Facebook (375 veces más), que además impulsó que la página de Facebook pasara de 28 a 754 seguidores en un mes.`));
+  if(CROSS.length>0){
+    const fbBigger = CROSS.filter(c=>c.fb_impressions>c.ig_reach);
+    const extreme = [...CROSS].sort((a,b)=>(b.fb_impressions/Math.max(b.ig_reach,1))-(a.fb_impressions/Math.max(a.ig_reach,1)))[0];
+    const extremeMult = (extreme.fb_impressions/Math.max(extreme.ig_reach,1)).toFixed(0);
+    wrap.appendChild(el('div','note insight',`🔎 Hallazgo principal del dashboard: en las ${CROSS.length} fechas con una publicación emparejable en cada plataforma, Facebook generó más impresiones que Instagram alcance en <b>${fbBigger.length} de ${CROSS.length} ocasiones</b>. El caso más extremo es el del ${fmtDate(extreme.date)}: ${fmt(extreme.ig_reach)} de alcance en Instagram frente a ${fmt(extreme.fb_impressions)} impresiones en Facebook (${extremeMult} veces más).`));
+  }
+
+  const crossCard = el('div','card');
+  crossCard.innerHTML = `<h3 style="font-size:14px;margin-bottom:10px;">Alcance IG vs impresiones FB por fecha (escala logarítmica)</h3><div class="chart-box"><canvas id="crossChart"></canvas></div>`;
+  wrap.appendChild(crossCard);
 
   const tableWrap = el('div','card');
   tableWrap.style.marginTop = '14px';
@@ -382,6 +395,28 @@ function renderMultiplataforma(){
   wrap.appendChild(el('div','note','Nota: la comparación usa "alcance" en Instagram (cuentas únicas) e "impresiones" en Facebook (visualizaciones totales, pueden repetirse por cuenta) porque son las métricas nativas disponibles en cada API vía Windsor.ai — no son la misma unidad exacta, pero la diferencia de magnitud es lo suficientemente grande como para ser una señal real, no un artefacto de medición.'));
 
   return wrap;
+}
+function drawCrossChart(){
+  const ctx = document.getElementById('crossChart');
+  if(!ctx) return;
+  new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels: CROSS.map(c=>fmtDate(c.date)),
+      datasets:[
+        {label:'Alcance Instagram', data:CROSS.map(c=>c.ig_reach), backgroundColor:'#E1306C'},
+        {label:'Impresiones Facebook', data:CROSS.map(c=>c.fb_impressions), backgroundColor:'#1877F2'},
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#94A3B8', font:{size:11}}}},
+      scales:{
+        x:{ticks:{color:'#64748B', font:{size:9}}, grid:{display:false}},
+        y:{type:'logarithmic', ticks:{color:'#64748B', font:{size:10}}, grid:{color:'rgba(255,255,255,.04)'}}
+      }
+    }
+  });
 }
 function drawFbChart(){
   const ctx = document.getElementById('fbChart');
@@ -539,6 +574,15 @@ function renderPuntuacion(){
   card.appendChild(el('p','',`<p style="font-size:12px;color:var(--text2);margin-top:10px;line-height:1.5;">Cada métrica se convierte en un percentil dentro de las 10 publicaciones (0 a 1) y se combina con estos pesos para dar un score de 0 a 100. Esto normaliza por el tamaño de la cuenta y evita comparar cifras absolutas entre publicaciones de fechas muy distintas.</p>`));
   wrap.appendChild(card);
 
+  const two = el('div','two-col');
+  const weightsCard = el('div','card');
+  weightsCard.innerHTML = `<h3 style="font-size:14px;margin-bottom:10px;">Ponderación (visual)</h3><div class="chart-box" style="max-width:280px;margin:0 auto;"><canvas id="weightsChart"></canvas></div>`;
+  two.appendChild(weightsCard);
+  const scoresCard = el('div','card');
+  scoresCard.innerHTML = `<h3 style="font-size:14px;margin-bottom:10px;">Puntuación de cada publicación</h3><div class="chart-box"><canvas id="scoresChart"></canvas></div>`;
+  two.appendChild(scoresCard);
+  wrap.appendChild(two);
+
   const grid = el('div','grid cols-4');
   grid.style.marginTop='14px';
   [['80-100','Extraordinaria','var(--emerald)'],['65-79','Muy buena','var(--emerald)'],['55-64','Buena','var(--cyan)'],['45-54','Promedio','var(--text2)'],['30-44','Por debajo de la media','var(--amber)'],['0-29','Mala','var(--rose)']].forEach(([range,label,color])=>{
@@ -549,6 +593,38 @@ function renderPuntuacion(){
   wrap.appendChild(grid);
   wrap.appendChild(el('div','note','Con n=10, estas etiquetas describen el ranking interno de estas publicaciones entre sí, no un estándar universal de "buen contenido" — se recomienda recalcular cuando haya 30+ publicaciones para conclusiones más robustas.'));
   return wrap;
+}
+function drawWeightsChart(){
+  const ctx = document.getElementById('weightsChart');
+  if(!ctx) return;
+  new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels:['Engagement rate','Alcance','Guardados','Compartidos','Comentarios','Me gusta'],
+      datasets:[{ data:[30,20,15,15,10,10], backgroundColor:['#0066FF','#06B6D4','#10B981','#F59E0B','#a78bfa','#F43F5E'], borderColor:'#0F0F0F', borderWidth:3 }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, cutout:'55%',
+      plugins:{legend:{position:'bottom', labels:{color:'#94A3B8', font:{size:10}, padding:8, boxWidth:10}}}
+    }
+  });
+}
+function drawScoresChart(){
+  const ctx = document.getElementById('scoresChart');
+  if(!ctx) return;
+  const sorted = [...POSTS].sort((a,b)=>a.timestamp<b.timestamp?-1:1);
+  new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels: sorted.map(p=>fmtDate(p.timestamp)),
+      datasets:[{ label:'Puntuación', data: sorted.map(p=>p.score), backgroundColor: sorted.map(p=>p.score>=60?'#10B981':(p.score>=40?'#F59E0B':'#F43F5E')) }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{ x:{ticks:{color:'#64748B', font:{size:9}}, grid:{display:false}}, y:{min:0, max:100, ticks:{color:'#64748B', font:{size:10}}, grid:{color:'rgba(255,255,255,.04)'}} }
+    }
+  });
 }
 
 // ---------- MEJORES ----------
@@ -716,9 +792,9 @@ function renderGanchos(){
   const wrap = el('div');
   wrap.appendChild(el('h2','section-title','Análisis de ganchos y temas'));
   const withCaption = POSTS.filter(p=>p.media_caption);
-  wrap.appendChild(el('p','section-sub',`Solo ${withCaption.length} de ${POSTS.length} publicaciones tienen caption disponible en los datos — las 7 restantes (todas de julio-agosto, todos los reels) tienen el campo de caption vacío en Windsor.ai.`));
+  wrap.appendChild(el('p','section-sub',`Solo ${withCaption.length} de ${POSTS.length} publicaciones tienen caption disponible en los datos — las ${POSTS.length-withCaption.length} restantes (todas de julio-agosto, todos los reels) tienen el campo de caption vacío en Windsor.ai.`));
 
-  wrap.appendChild(el('div','note na',`No disponible para 7/10 publicaciones: el análisis de gancho, tipo de CTA, tono y estructura requiere el texto de la publicación, que no está presente. Es posible que estos reels se publicaran sin caption, o que el campo no se sincronizara — conviene revisarlo directamente en Instagram.`));
+  wrap.appendChild(el('div','note na',`No disponible para ${POSTS.length-withCaption.length}/${POSTS.length} publicaciones: el análisis de gancho, tipo de CTA, tono y estructura requiere el texto de la publicación, que no está presente. Es posible que estos reels se publicaran sin caption, o que el campo no se sincronizara — conviene revisarlo directamente en Instagram.`));
 
   withCaption.forEach(p=>{
     const c = el('div','card');
@@ -746,7 +822,12 @@ function renderHorarios(){
   wrap.appendChild(el('p','section-sub','Con 10 publicaciones en total no hay muestra suficiente para un mapa de calor fiable — se muestran los datos reales sin forzar conclusiones de "mejor horario".'));
   wrap.appendChild(el('div','note warn','No se puede recomendar un horario óptimo con n=10 (regla del propio análisis: no afirmar patrones de horario con muestra insuficiente). Se listan los horarios reales de publicación como referencia, no como recomendación.'));
 
+  const chartCard = el('div','card');
+  chartCard.innerHTML = `<h3 style="font-size:14px;margin-bottom:10px;">Alcance por publicación, en orden cronológico</h3><div class="chart-box"><canvas id="horariosChart"></canvas></div>`;
+  wrap.appendChild(chartCard);
+
   const card = el('div','card');
+  card.style.marginTop = '14px';
   const tw = el('div','table-wrap');
   const rows = [...POSTS].sort((a,b)=>a.timestamp<b.timestamp?1:-1).map(p=>{
     const d = new Date(p.timestamp);
@@ -760,6 +841,23 @@ function renderHorarios(){
 
   wrap.appendChild(el('div','note',`Observación (no una recomendación): 5 de las 10 publicaciones se hicieron el mismo día (6 de agosto) en distintas horas, lo que hace casi imposible aislar el efecto del horario de publicación de esa jornada — se recomienda espaciar publicaciones al menos 24-48h para poder medir esto de forma fiable en el futuro.`));
   return wrap;
+}
+function drawHorariosChart(){
+  const ctx = document.getElementById('horariosChart');
+  if(!ctx) return;
+  const sorted = [...POSTS].sort((a,b)=>a.timestamp<b.timestamp?-1:1);
+  new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels: sorted.map(p=>{ const d=new Date(p.timestamp); return fmtDate(p.timestamp)+' '+String(d.getUTCHours()).padStart(2,'0')+'h'; }),
+      datasets:[{ label:'Alcance', data: sorted.map(p=>p.media_reach), backgroundColor:'#06B6D4' }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{ x:{ticks:{color:'#64748B', font:{size:9}, maxRotation:45}, grid:{display:false}}, y:{ticks:{color:'#64748B', font:{size:10}}, grid:{color:'rgba(255,255,255,.04)'}} }
+    }
+  });
 }
 
 // ---------- AUDIENCIA ----------
@@ -827,18 +925,25 @@ function renderConversion(){
 }
 
 // ---------- OPORTUNIDADES ----------
+const OPPS = [
+  ['Publicar simultáneamente en Instagram y Facebook', 'Alto', 'Alta', 'Facebook demostró 6/6 veces más alcance que Instagram con el mismo contenido exacto. Es la palanca de mayor impacto detectada en todo el análisis.'],
+  ['Retomar la cadencia de publicación ya', 'Alto', 'Alta', `${weeksSinceLastPost()} semanas de silencio justo después del mejor resultado del año — el impulso ganado en Facebook se está enfriando sin contenido nuevo.`],
+  ['Escribir caption con gancho en cada publicación', 'Medio', 'Media', `Las únicas ${captionCount()} publicaciones con texto real superan la puntuación media; la muestra es pequeña pero la dirección es consistente.`],
+  ['No agrupar varias publicaciones el mismo día', 'Medio', 'Alta', '5 de 10 publicaciones se hicieron el mismo día (6 ago) compitiendo entre sí por distribución — los reels de ese día tuvieron el alcance más bajo del histórico salvo uno.'],
+  ['Guardar el guion/caption de cada reel antes de publicar', 'Medio', 'Alta', `Permite en el futuro analizar qué ganchos funcionan — ahora mismo ${POSTS.length-captionCount()}/${POSTS.length} reels no tienen texto registrado y ese análisis es imposible.`],
+  ['Interactuar activamente con cuentas del nicho', 'Medio', 'Media', 'La cuenta solo sigue a 3 perfiles — para una cuenta nueva, el follow/comment activo es una palanca de descubribilidad que no depende del alcance orgánico.'],
+];
+function weeksSinceLastPost(){ return Math.round(daysSinceLastPost/7); }
+function captionCount(){ return POSTS.filter(p=>p.media_caption).length; }
 function renderOportunidades(){
   const wrap = el('div');
   wrap.appendChild(el('h2','section-title','Oportunidades de crecimiento'));
-  const opps = [
-    ['Publicar simultáneamente en Instagram y Facebook', 'Alto', 'Alta', 'Facebook demostró 6/6 veces más alcance que Instagram con el mismo contenido exacto. Es la palanca de mayor impacto detectada en todo el análisis.'],
-    ['Retomar la cadencia de publicación ya', 'Alto', 'Alta', '3 semanas de silencio justo después del mejor resultado del año — el impulso ganado en Facebook se está enfriando sin contenido nuevo.'],
-    ['Escribir caption con gancho en cada publicación', 'Medio', 'Media', 'Las únicas 2 publicaciones con texto real superan la puntuación media; la muestra es pequeña pero la dirección es consistente.'],
-    ['No agrupar varias publicaciones el mismo día', 'Medio', 'Alta', '5 de 10 publicaciones se hicieron el mismo día (6 ago) compitiendo entre sí por distribución — los reels de ese día tuvieron el alcance más bajo del histórico salvo uno.'],
-    ['Guardar el guion/caption de cada reel antes de publicar', 'Medio', 'Alta', 'Permite en el futuro analizar qué ganchos funcionan — ahora mismo 7/10 reels no tienen texto registrado y ese análisis es imposible.'],
-    ['Interactuar activamente con cuentas del nicho', 'Medio', 'Media', 'La cuenta solo sigue a 3 perfiles — para una cuenta nueva, el follow/comment activo es una palanca de descubribilidad que no depende del alcance orgánico.'],
-  ];
-  opps.forEach(([title,impact,ease,detail])=>{
+
+  const matrixCard = el('div','card');
+  matrixCard.innerHTML = `<h3 style="font-size:14px;margin-bottom:10px;">Matriz de impacto vs facilidad</h3><div class="chart-box"><canvas id="oppsChart"></canvas></div>`;
+  wrap.appendChild(matrixCard);
+
+  OPPS.forEach(([title,impact,ease,detail])=>{
     const c = el('div','rec');
     c.innerHTML = `<div class="k">${title}</div>
       <div class="row"><b>Impacto:</b> ${impact} · <b>Facilidad:</b> ${ease}</div>
@@ -846,6 +951,33 @@ function renderOportunidades(){
     wrap.appendChild(c);
   });
   return wrap;
+}
+function drawOppsChart(){
+  const ctx = document.getElementById('oppsChart');
+  if(!ctx) return;
+  const scale = {Bajo:1, Baja:1, Medio:2, Media:2, Alto:3, Alta:3};
+  new Chart(ctx, {
+    type:'scatter',
+    data:{
+      datasets:[{
+        label:'Oportunidades',
+        data: OPPS.map(([title,impact,ease])=>({x:scale[ease], y:scale[impact], title})),
+        backgroundColor:'#0066FF',
+        pointRadius:9, pointHoverRadius:11,
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{ callbacks:{ label:(ctx)=> ctx.raw.title } }
+      },
+      scales:{
+        x:{min:0.5, max:3.5, title:{display:true,text:'Facilidad →',color:'#64748B'}, ticks:{color:'#64748B', stepSize:1, callback:v=>['','Baja','Media','Alta'][v]||''}, grid:{color:'rgba(255,255,255,.04)'}},
+        y:{min:0.5, max:3.5, title:{display:true,text:'Impacto →',color:'#64748B'}, ticks:{color:'#64748B', stepSize:1, callback:v=>['','Bajo','Medio','Alto'][v]||''}, grid:{color:'rgba(255,255,255,.04)'}}
+      }
+    }
+  });
 }
 
 // ---------- PLAN ----------
@@ -910,28 +1042,52 @@ function renderCalendario(){
 }
 
 // ---------- IDEAS ----------
+const IDEAS = [
+  ['Alcance','Reel','"[ERROR MENTAL] que el 90% de la gente comete sin saberlo"','Gancho de error común + demostración rápida','Guardar / compartir'],
+  ['Alcance','Reel','"Por qué tu mente [PROBLEMA] y qué hacer al respecto"','Pregunta + solución práctica en <30s','Seguir para más'],
+  ['Guardados','Carrusel','"5 señales de que estás viviendo en piloto automático"','Lista práctica, aplicable de inmediato','Guardar esto'],
+  ['Compartidos','Reel','"Manda esto a alguien que [SITUACIÓN]"','Contenido con potencial de identificación directa','Compartir con esa persona'],
+  ['Comentarios','Carrusel','"¿Estás de acuerdo? La mente no controla, observa"','Afirmación con matiz de opinión, invita a debate','Comenta tu opinión'],
+  ['Seguidores','Reel','"Método de 3 pasos para [RESULTADO DESEADO]"','Promesa clara + demostración de autoridad','Sígueme para la serie completa'],
+  ['Autoridad','Carrusel','Storytelling personal: cómo descubriste la metacognición','Igual que el post de mejor puntuación del histórico','Empieza aquí (bio)'],
+  ['Comunidad','Reel','"Esto os pasa a todos: [PATRÓN COMÚN]"','Igual formato que el reel con mejor engagement rate','Comenta si te pasa'],
+];
 function renderIdeas(){
   const wrap = el('div');
   wrap.appendChild(el('h2','section-title','Banco de ideas de contenido'));
   wrap.appendChild(el('p','section-sub','Ideas adaptadas al nicho real de la cuenta (neurociencia aplicada, metacognición, atención plena — según biografía del perfil), usando variables editables.'));
-  const ideas = [
-    ['Alcance','Reel','"[ERROR MENTAL] que el 90% de la gente comete sin saberlo"','Gancho de error común + demostración rápida','Guardar / compartir'],
-    ['Alcance','Reel','"Por qué tu mente [PROBLEMA] y qué hacer al respecto"','Pregunta + solución práctica en <30s','Seguir para más'],
-    ['Guardados','Carrusel','"5 señales de que estás viviendo en piloto automático"','Lista práctica, aplicable de inmediato','Guardar esto'],
-    ['Compartidos','Reel','"Manda esto a alguien que [SITUACIÓN]"','Contenido con potencial de identificación directa','Compartir con esa persona'],
-    ['Comentarios','Carrusel','"¿Estás de acuerdo? La mente no controla, observa"','Afirmación con matiz de opinión, invita a debate','Comenta tu opinión'],
-    ['Seguidores','Reel','"Método de 3 pasos para [RESULTADO DESEADO]"','Promesa clara + demostración de autoridad','Sígueme para la serie completa'],
-    ['Autoridad','Carrusel','Storytelling personal: cómo descubriste la metacognición','Igual que el post de mejor puntuación del histórico','Empieza aquí (bio)'],
-    ['Comunidad','Reel','"Esto os pasa a todos: [PATRÓN COMÚN]"','Igual formato que el reel con mejor engagement rate','Comenta si te pasa'],
-  ];
+
+  const objCard = el('div','card');
+  objCard.innerHTML = `<h3 style="font-size:14px;margin-bottom:10px;">Reparto de ideas por objetivo</h3><div class="chart-box" style="max-width:320px;margin:0 auto;"><canvas id="ideasChart"></canvas></div>`;
+  wrap.appendChild(objCard);
+
   const grid = el('div','grid cols-2');
-  ideas.forEach(([obj,formato,titulo,gancho,cta])=>{
+  grid.style.marginTop = '14px';
+  IDEAS.forEach(([obj,formato,titulo,gancho,cta])=>{
     const c = el('div','idea-card');
     c.innerHTML = `<span class="tag">${obj} · ${formato}</span><h4>${titulo}</h4><p>${gancho}</p><div class="badge">CTA: ${cta}</div>`;
     grid.appendChild(c);
   });
   wrap.appendChild(grid);
   return wrap;
+}
+function drawIdeasChart(){
+  const ctx = document.getElementById('ideasChart');
+  if(!ctx) return;
+  const counts = {};
+  IDEAS.forEach(([obj])=>{ counts[obj] = (counts[obj]||0)+1; });
+  const labels = Object.keys(counts);
+  new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels: labels.map(l=>`${l} (${counts[l]})`),
+      datasets:[{ data: labels.map(l=>counts[l]), backgroundColor:['#0066FF','#06B6D4','#10B981','#F59E0B','#a78bfa','#F43F5E','#E1306C'], borderColor:'#0F0F0F', borderWidth:3 }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, cutout:'55%',
+      plugins:{legend:{position:'bottom', labels:{color:'#94A3B8', font:{size:10}, padding:8, boxWidth:10}}}
+    }
+  });
 }
 
 // ---------- EXPERIMENTOS ----------
@@ -966,7 +1122,7 @@ function renderAlertas(){
   const wrap = el('div');
   wrap.appendChild(el('h2','section-title','Alertas automáticas'));
   const alerts = [
-    ['warn', `${daysSinceLastPost} días sin publicar`, 'Última publicación real registrada (Instagram)', 'La cuenta lleva 3 semanas en silencio justo después del mejor resultado del año en Facebook — riesgo de perder el impulso ganado.', 'Publicar esta semana, en ambas plataformas.'],
+    ['warn', `${daysSinceLastPost} días sin publicar`, 'Última publicación real registrada (Instagram)', `La cuenta lleva ${weeksSinceLastPost()} semanas en silencio justo después del mejor resultado del año en Facebook — riesgo de perder el impulso ganado.`, 'Publicar esta semana, en ambas plataformas.'],
     ['insight', 'Facebook creció +726 seguidores en 48 horas', 'page_fans: 28 → 754 entre el 27 y 29 de julio', 'Un único reel republicado generó ese crecimiento — señal fuerte de que el contenido conecta cuando alcanza suficiente audiencia.', 'Analizar y replicar ese reel concreto; mantener publicación cruzada.'],
     ['na', 'Retención crítica en un reel de alto alcance', '92,7% de abandono en los primeros 3 segundos (reel del 6 ago, 133 de alcance)', 'El reel llegó a bastante gente pero casi nadie se quedó a verlo — el alcance no se tradujo en atención real.', 'Revisar y mejorar el gancho de los primeros 2-3 segundos en el próximo reel.'],
     ['warn', '5 publicaciones el mismo día', '6 de agosto: 5 de las 10 publicaciones del histórico', 'Publicar varias piezas el mismo día hace que compitan entre sí por distribución y dificulta medir qué funciona.', 'Espaciar publicaciones al menos 48-72 horas.'],
