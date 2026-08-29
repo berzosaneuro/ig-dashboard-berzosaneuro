@@ -52,8 +52,34 @@ function sectionTitle(text, accentA, accentB){
   return h;
 }
 
+// Banner de urgencia: solo aparece cuando se cumple una condición real (no
+// siempre), y una vez descartado no vuelve a mostrarse para esa misma alerta
+// — se recuerda en este navegador. Si más adelante surge una alerta nueva
+// (p. ej. tras publicar, cuando vuelvan a pasar 14+ días), el id cambia
+// (va ligado a la fecha de la última publicación) y sí que reaparece.
+const URGENT_THRESHOLD_DAYS = 14;
+function renderUrgentBanner(){
+  if (daysSinceLastPost < URGENT_THRESHOLD_DAYS) return null;
+  const alertId = 'lastpost-' + lastPostDate.toISOString().slice(0,10);
+  let dismissed = null;
+  try { dismissed = localStorage.getItem('dashboard_dismissed_alert'); } catch(e) {}
+  if (dismissed === alertId) return null;
+
+  const banner = el('div','urgent-banner');
+  banner.innerHTML = `<span class="icon">⚠️</span><span class="msg"><b>${daysSinceLastPost} días sin publicar.</b> El impulso ganado en Facebook se está enfriando — publica esta semana en Instagram y Facebook a la vez.</span>`;
+  const btn = el('button','dismiss','Entendido');
+  btn.onclick = ()=>{
+    try { localStorage.setItem('dashboard_dismissed_alert', alertId); } catch(e) {}
+    banner.remove();
+  };
+  banner.appendChild(btn);
+  return banner;
+}
+
 function renderApp(){
   const root = document.getElementById('root');
+  const banner = renderUrgentBanner();
+  if (banner) root.appendChild(banner);
   root.appendChild(renderHeader());
   const app = el('div','app');
   app.appendChild(renderTabs());
