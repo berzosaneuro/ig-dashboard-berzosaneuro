@@ -6,9 +6,12 @@
 //
 // /api/* queda fuera a propósito: /api/sync lo llama el cron de Vercel
 // automáticamente y no debe bloquearse.
+// /.well-known/* también queda fuera: Vercel lo usa para verificar dominios
+// y emitir certificados SSL (retos ACME) — si se bloqueara, un dominio
+// nuevo se quedaría sin certificado para siempre.
 
 export const config = {
-  matcher: '/((?!api/).*)',
+  matcher: '/((?!api/|\\.well-known/).*)',
 };
 
 export default function middleware(request) {
