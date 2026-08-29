@@ -70,6 +70,7 @@ function renderApp(){
   requestAnimationFrame(()=>{
     drawEvolutionChart(); drawFormatChart(); drawFormatMixChart(); drawFbChart(); drawFollowersDoughnut();
     drawCrossChart(); drawWeightsChart(); drawScoresChart(); drawHorariosChart(); drawOppsChart(); drawIdeasChart();
+    drawContentScatterChart(); drawCaptionChart();
   });
 }
 
@@ -510,13 +511,44 @@ function renderContenido(){
   const wrap = el('div');
   wrap.appendChild(el('h2','section-title','Todas las publicaciones (Instagram)'));
   wrap.appendChild(el('p','section-sub','Las 10 publicaciones del histórico completo, con métricas reales de Windsor.ai. Click en las cabeceras para ordenar.'));
+
+  const scatterCard = el('div','card');
+  scatterCard.innerHTML = `<h3 style="font-size:14px;margin-bottom:10px;">Alcance vs Engagement, publicación a publicación</h3><div class="chart-box"><canvas id="contentScatterChart"></canvas></div>`;
+  wrap.appendChild(scatterCard);
+
   const card = el('div','card');
+  card.style.marginTop = '14px';
   const tw = el('div','table-wrap');
   tw.id = 'content-table-wrap';
   card.appendChild(tw);
   wrap.appendChild(card);
   renderContentTable();
   return wrap;
+}
+function drawContentScatterChart(){
+  const ctx = document.getElementById('contentScatterChart');
+  if(!ctx) return;
+  const point = p => ({x:p.media_reach, y:p.media_engagement, date:fmtDate(p.timestamp), score:p.score});
+  new Chart(ctx, {
+    type:'scatter',
+    data:{
+      datasets:[
+        {label:'Reels', data:reels.map(point), backgroundColor:'#06B6D4', pointRadius:7, pointHoverRadius:9},
+        {label:'Carruseles', data:carousels.map(point), backgroundColor:'#a78bfa', pointRadius:7, pointHoverRadius:9},
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{labels:{color:'#94A3B8', font:{size:11}}},
+        tooltip:{ callbacks:{ label:(c)=> `${c.dataset.label} · ${c.raw.date} · alcance ${c.raw.x}, engagement ${c.raw.y} (puntuación ${c.raw.score.toFixed(1)})` } }
+      },
+      scales:{
+        x:{title:{display:true,text:'Alcance',color:'#64748B'}, ticks:{color:'#64748B', font:{size:10}}, grid:{color:'rgba(255,255,255,.04)'}},
+        y:{title:{display:true,text:'Engagement',color:'#64748B'}, ticks:{color:'#64748B', font:{size:10}}, grid:{color:'rgba(255,255,255,.04)'}}
+      }
+    }
+  });
 }
 function renderContentTable(){
   const tw = document.getElementById('content-table-wrap');
@@ -796,6 +828,11 @@ function renderGanchos(){
 
   wrap.appendChild(el('div','note na',`No disponible para ${POSTS.length-withCaption.length}/${POSTS.length} publicaciones: el análisis de gancho, tipo de CTA, tono y estructura requiere el texto de la publicación, que no está presente. Es posible que estos reels se publicaran sin caption, o que el campo no se sincronizara — conviene revisarlo directamente en Instagram.`));
 
+  const captionChartCard = el('div','card');
+  captionChartCard.style.marginBottom = '14px';
+  captionChartCard.innerHTML = `<h3 style="font-size:14px;margin-bottom:10px;">Puntuación media: con caption vs sin caption</h3><div class="chart-box" style="max-width:400px;margin:0 auto;"><canvas id="captionChart"></canvas></div>`;
+  wrap.appendChild(captionChartCard);
+
   withCaption.forEach(p=>{
     const c = el('div','card');
     c.style.marginBottom='12px';
@@ -813,6 +850,24 @@ function renderGanchos(){
 
   wrap.appendChild(el('div','note insight','Con solo 2 captions de texto real disponibles no se puede construir una taxonomía de ganchos fiable (se necesitarían al menos 15-20 publicaciones con texto). El dato consistente que sí se puede afirmar: ambas publicaciones con caption real superan la puntuación media de la cuenta.'));
   return wrap;
+}
+function drawCaptionChart(){
+  const ctx = document.getElementById('captionChart');
+  if(!ctx) return;
+  const withCaption = POSTS.filter(p=>p.media_caption);
+  const withoutCaption = POSTS.filter(p=>!p.media_caption);
+  new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels:[`Con caption (n=${withCaption.length})`, `Sin caption (n=${withoutCaption.length})`],
+      datasets:[{ data:[avg(withCaption,p=>p.score), avg(withoutCaption,p=>p.score)], backgroundColor:['#10B981','#64748B'] }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{ x:{ticks:{color:'#94A3B8', font:{size:10}}, grid:{display:false}}, y:{min:0, max:100, ticks:{color:'#64748B', font:{size:10}}, grid:{color:'rgba(255,255,255,.04)'}, title:{display:true,text:'Puntuación media',color:'#64748B',font:{size:10}}} }
+    }
+  });
 }
 
 // ---------- HORARIOS ----------
