@@ -70,6 +70,29 @@ function row(platform, entity_type, external_id, metrics) {
   return { platform, entity_type, external_id: String(external_id), metrics };
 }
 
+// Cross-platform rows are fully recomputed on every sync (not accumulated
+// like posts), so any row from a previous run that the current computation
+// no longer produces would otherwise stay orphaned in the table forever —
+// upsert only adds/updates, it never removes. Wipe the old set before
+// writing the fresh one so the table always matches what buildCrossPlatform
+// says right now.
+async function supabaseDeleteCross() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error('Falta SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY');
+  const res = await fetch(
+    `${url}/rest/v1/ig_dashboard_metrics?platform=eq.cross&entity_type=eq.cross_day`,
+    {
+      method: 'DELETE',
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Supabase delete cross ${res.status}: ${text}`);
+  }
+}
+
 module.exports = async function handler(req, res) {
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {
@@ -180,8 +203,9 @@ module.exports = async function handler(req, res) {
       report.errors.push(`TikTok (no bloqueante): ${e.message}`);
     }
 
+    await supabaseDeleteCross();
     const result = await supabaseUpsert(rows);
-    report.steps.push(`Filas escritas en Supabase: ${result.upserted}`);
+    report.steps.push(`Filas escritas en Supabase: ${result.upserted} (cross recalculado: ${cross.length})`);
 
     res.status(200).json({ ok: true, ...report, syncedAt: new Date().toISOString() });
   } catch (e) {
