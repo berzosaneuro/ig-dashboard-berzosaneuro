@@ -37,14 +37,17 @@ export default function middleware(request) {
 
   if (token === ACCESS_TOKEN) {
     if (queryToken) {
+      // set the 1-year cookie and bounce to the same URL without ?t=
       const clean = new URL(url);
       clean.searchParams.delete('t');
-      const res = Response.redirect(clean, 302);
-      res.headers.append(
-        'Set-Cookie',
-        `dash_t=${encodeURIComponent(queryToken)}; Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax`
-      );
-      return res;
+      // build the redirect by hand — Response.redirect()'s headers are immutable
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: clean.toString(),
+          'Set-Cookie': `dash_t=${encodeURIComponent(queryToken)}; Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax`,
+        },
+      });
     }
     return;
   }
