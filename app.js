@@ -21,6 +21,16 @@ const fbFansStart = FB_DAILY[0].page_fans;
 const fbImpressionsTotal = sum(FB_POSTS, p=>p.post_impressions);
 const fbEngTotal = sum(FB_POSTS, p=>p.post_engagements);
 
+// ---------- TikTok (Windsor tiktok_organic — solo últimos 60 días) ----------
+const TK_POSTS = window.TK_POSTS ?? [];
+const TK_META = window.TK_META ?? null;
+const TK_HAS_DATA = TK_POSTS.length > 0 || (TK_META && (TK_META.videos_count > 0 || TK_META.followers > 0));
+const tkFollowers = TK_META?.followers ?? 0;
+const tkVideosCount = TK_META?.videos_count ?? TK_POSTS.length;
+const tkLikesTotal = TK_META?.total_likes ?? sum(TK_POSTS, v=>v.video_likes);
+const tkViewsTotal = sum(TK_POSTS, v=>v.video_views_count);
+const tkEngTotal = sum(TK_POSTS, v=>(v.video_likes||0)+(v.video_comments||0)+(v.video_shares||0));
+
 function fmt(n){ return n.toLocaleString('es-ES'); }
 function pct(n){ return (n>=0?'+':'') + n.toFixed(0) + '%'; }
 function scoreClass(s){ return s>=60?'hi':(s>=40?'mid':'lo'); }
@@ -110,7 +120,7 @@ function renderHeader(){
     <div class="badges">
       <span class="badge ig">📷 Instagram: ${IG_FOLLOWERS} seguidores</span>
       <span class="badge fb">👍 Facebook: ${fmt(fbFansNow)} seguidores</span>
-      <span class="badge tiktok">🎵 TikTok: sin datos</span>
+      <span class="badge tiktok">🎵 TikTok: ${TK_HAS_DATA ? `${fmt(tkFollowers)} seguidores · ${fmt(tkVideosCount)} vídeos` : 'sin datos'}</span>
       <span class="badge">Última publicación: hace ${daysSinceLastPost} días</span>
       ${window.LAST_SYNC_AT ? `<span class="badge">🔄 Datos actualizados: ${fmtDateTime(window.LAST_SYNC_AT)}</span>` : ''}
     </div>
@@ -240,7 +250,9 @@ function renderResumen(){
     <div class="chart-box" style="max-width:340px;margin:0 auto;"><canvas id="followersDoughnut"></canvas></div>`;
   wrap.appendChild(doughnutCard);
 
-  wrap.appendChild(el('div','note','TikTok todavía no suma a estos totales — 0 seguidores y 0 publicaciones, cuenta sin contenido por ahora.'));
+  wrap.appendChild(el('div','note', TK_HAS_DATA
+    ? `TikTok no se suma a estos totales todavía: ${fmt(tkFollowers)} seguidor${tkFollowers===1?'':'es'} y ${fmt(tkVideosCount)} vídeos con muy poco recorrido. Ver la pestaña TikTok para el detalle.`
+    : 'TikTok todavía no suma a estos totales — 0 seguidores y 0 publicaciones, cuenta sin contenido por ahora.'));
 
   wrap.appendChild(el('h2','section-title','Por plataforma'));
   const grid = el('div','grid cols-4');
@@ -252,7 +264,9 @@ function renderResumen(){
     ['Engagement medio / alcance (IG)', avgEngRate.toFixed(1)+'%', `Sobre las ${POSTS.length} publicaciones de Instagram`],
     ['Seguidores en Facebook', fmt(fbFansNow), `Desde ${fmt(fbFansStart)} el ${fmtDate(FB_DAILY[0].date)}`],
     ['Impresiones totales FB', fmt(fbImpressionsTotal), `Sobre las ${fmt(FB_POSTS.length)} publicaciones de Facebook`],
-    ['TikTok', '—', '0 seguidores, 0 vídeos — sin datos todavía'],
+    TK_HAS_DATA
+      ? ['TikTok (últimos 60 días)', fmt(tkViewsTotal)+' reprod.', `${fmt(tkFollowers)} seguidores · ${TK_POSTS.length} vídeos · ${fmt(tkLikesTotal)} me gusta`]
+      : ['TikTok', '—', '0 seguidores, 0 vídeos — sin datos todavía'],
   ];
   metrics.forEach(([label,value,sub])=>{
     const c = el('div','card metric');
@@ -391,7 +405,9 @@ function renderMultiplataforma(){
   </div>`;
   wrap.appendChild(compare);
 
-  wrap.appendChild(el('div','note na','TikTok: 0 publicaciones — cuenta conectada pero sin contenido todavía, no hay nada que comparar en esta plataforma por ahora.'));
+  wrap.appendChild(el('div', TK_HAS_DATA ? 'note' : 'note na', TK_HAS_DATA
+    ? `TikTok (últimos 60 días): ${TK_POSTS.length} vídeos, ${fmt(tkViewsTotal)} reproducciones en total y ${fmt(tkFollowers)} seguidor${tkFollowers===1?'':'es'}. Todavía muy poco recorrido para compararlo de tú a tú con Instagram y Facebook — detalle en la pestaña TikTok.`
+    : 'TikTok: 0 publicaciones — cuenta conectada pero sin contenido todavía, no hay nada que comparar en esta plataforma por ahora.'));
   wrap.appendChild(el('div','note','Días con varias publicaciones el mismo día en una u otra plataforma (p. ej. el 6 de agosto) se excluyen de esta comparativa a propósito: sin un identificador que vincule cada reel de Instagram con su republicación en Facebook, emparejar publicaciones de un día con múltiples posts sería adivinar, no medir.'));
 
   if(CROSS.length>0){
@@ -518,16 +534,70 @@ function renderFacebook(){
 function renderTikTok(){
   const wrap = el('div');
   wrap.appendChild(sectionTitle('TikTok', 'var(--tiktok)', 'var(--tiktok2)'));
-  wrap.appendChild(el('p','section-sub','Cuenta conectada a Windsor.ai (@berzosa.neuro).'));
-  wrap.appendChild(el('div','note na','Estado real de la cuenta: 0 seguidores, 0 vídeos publicados, 0 me gusta totales. No hay ninguna publicación que analizar todavía — no se puede generar ningún ranking, puntuación ni recomendación específica sin datos, y no se van a inventar.'));
-  const grid = el('div','grid cols-3');
-  [['Seguidores','0',''],['Vídeos publicados','0',''],['Me gusta totales','0','']].forEach(([l,v,s])=>{
+
+  if(!TK_HAS_DATA){
+    wrap.appendChild(el('p','section-sub','Cuenta conectada a Windsor.ai (@berzosa.neuro).'));
+    wrap.appendChild(el('div','note na','Estado real de la cuenta: 0 seguidores, 0 vídeos publicados, 0 me gusta totales. No hay ninguna publicación que analizar todavía — no se puede generar ningún ranking, puntuación ni recomendación específica sin datos, y no se van a inventar.'));
+    const grid0 = el('div','grid cols-3');
+    [['Seguidores','0',''],['Vídeos publicados','0',''],['Me gusta totales','0','']].forEach(([l,v,s])=>{
+      const c = el('div','card metric');
+      c.innerHTML = `<div class="label">${l}</div><div class="value">${v}</div><div class="sub">${s}</div>`;
+      grid0.appendChild(c);
+    });
+    wrap.appendChild(grid0);
+    wrap.appendChild(el('div','note insight','En cuanto haya publicaciones, este dashboard las recoge automáticamente en la siguiente sincronización.'));
+    return wrap;
+  }
+
+  const asOf = TK_META?.as_of ? ` · datos a ${fmtDate(TK_META.as_of)}` : '';
+  wrap.appendChild(el('p','section-sub',`Cuenta conectada a Windsor.ai (@berzosa.neuro). TikTok Organic solo sirve los últimos 60 días, así que aquí se ven los ${TK_POSTS.length} vídeo${TK_POSTS.length===1?'':'s'} de ese periodo${asOf}.`));
+
+  const avgFull = avg(TK_POSTS, v=>v.video_full_watched_rate)*100;
+  const avgWatch = avg(TK_POSTS, v=>v.video_average_time_watched);
+  const grid = el('div','grid cols-4');
+  [
+    ['Seguidores', fmt(tkFollowers), 'Dato real · total_followers_count'],
+    ['Vídeos (histórico)', fmt(tkVideosCount), `${TK_POSTS.length} en los últimos 60 días`],
+    ['Reproducciones (60 días)', fmt(tkViewsTotal), `Suma de los ${TK_POSTS.length} vídeos del periodo`],
+    ['Me gusta totales', fmt(tkLikesTotal), 'Dato real · total_likes de la cuenta'],
+    ['Interacciones (60 días)', fmt(tkEngTotal), 'Me gusta + comentarios + compartidos'],
+    ['Ratio interacción / reproducción', tkViewsTotal? (tkEngTotal/tkViewsTotal*100).toFixed(2)+'%' : '—', `Sobre los ${TK_POSTS.length} vídeos del periodo`],
+    ['% que ve el vídeo entero (medio)', isFinite(avgFull)? avgFull.toFixed(1)+'%' : '—', 'video_full_watched_rate'],
+    ['Tiempo medio visto', isFinite(avgWatch)? avgWatch.toFixed(1)+'s' : '—', 'video_average_time_watched'],
+  ].forEach(([l,v,s])=>{
     const c = el('div','card metric');
     c.innerHTML = `<div class="label">${l}</div><div class="value">${v}</div><div class="sub">${s}</div>`;
     grid.appendChild(c);
   });
   wrap.appendChild(grid);
-  wrap.appendChild(el('div','note insight','Recomendación basada en lo observado en Facebook/Instagram: el mismo contenido en vertical (los reels ya grabados) republicado en TikTok tiene coste de producción cero y, dado que la distribución cruzada ya demostró funcionar muy por encima de lo esperado en Facebook, es razonable probar TikTok con el mismo material antes de invertir en contenido nuevo específico para esa plataforma. En cuanto haya publicaciones, este dashboard puede recalcularse para incluir el mismo análisis que Instagram y Facebook.'));
+
+  if(tkFollowers < 5 || tkViewsTotal < 100){
+    wrap.appendChild(el('div','note warn',`⚠️ Muestra mínima: ${fmt(tkFollowers)} seguidor${tkFollowers===1?'':'es'} y ${fmt(tkViewsTotal)} reproducciones en total. Sirve para ver que la publicación automática funciona y para vigilar la tendencia, pero todavía no da para conclusiones estadísticas.`));
+  }
+
+  // tabla de vídeos, ordenada por puntuación (mismo criterio que Instagram, adaptado)
+  const card = el('div','card'); card.style.marginTop = '14px';
+  card.innerHTML = `<h3 style="font-size:15px;margin-bottom:10px;">Vídeos de los últimos 60 días</h3>`;
+  const tw = el('div','table-wrap');
+  const rows = TK_POSTS.map(v=>{
+    const s = Math.round(v.score||0);
+    return `<tr>
+      <td>${v.video_create_datetime? fmtDate(v.video_create_datetime) : '—'}</td>
+      <td style="max-width:280px;">${(v.video_caption||'—').replace(/</g,'&lt;')}</td>
+      <td>${fmt(v.video_views_count||0)}</td>
+      <td>${fmt(v.video_likes||0)}</td>
+      <td>${fmt(v.video_comments||0)}</td>
+      <td>${fmt(v.video_shares||0)}</td>
+      <td>${v.video_full_watched_rate!=null? (v.video_full_watched_rate*100).toFixed(1)+'%' : '—'}</td>
+      <td><span class="score ${scoreClass(s)}">${s}</span></td>
+      <td>${v.video_share_url? `<a href="${v.video_share_url}" target="_blank" rel="noopener">Ver</a>` : '—'}</td>
+    </tr>`;
+  }).join('');
+  tw.innerHTML = `<table><thead><tr><th>Fecha</th><th>Caption</th><th>Reprod.</th><th>Me gusta</th><th>Coment.</th><th>Comp.</th><th>Ve entero</th><th>Puntuación</th><th>Enlace</th></tr></thead><tbody>${rows}</tbody></table>`;
+  card.appendChild(tw);
+  wrap.appendChild(card);
+
+  wrap.appendChild(el('div','note insight','La puntuación TikTok combina reproducciones (40%), ratio de interacción (40%) y % que ve el vídeo entero (20%), en percentiles frente al resto de vídeos del periodo. Con tan pocos vídeos es orientativa; gana valor a medida que se acumulan publicaciones.'));
   return wrap;
 }
 

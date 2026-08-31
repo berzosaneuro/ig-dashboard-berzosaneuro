@@ -65,6 +65,10 @@ function loadScript(src) {
   window.FB_DAILY = rowsOf('facebook', 'account_day').sort((a, b) => a.date < b.date ? -1 : 1);
   window.CROSS = rowsOf('cross', 'cross_day');
 
+  window.TK_POSTS = rowsOf('tiktok', 'post').sort((a, b) => (b.score || 0) - (a.score || 0));
+  const tkMetaRow = data.find(r => r.platform === 'tiktok' && r.entity_type === 'account_meta');
+  window.TK_META = tkMetaRow ? tkMetaRow.metrics : null;
+
   const metaRow = data.find(r => r.platform === 'instagram' && r.entity_type === 'account_meta');
   const meta = metaRow ? metaRow.metrics : {};
   window.IG_FOLLOWERS = meta.followers ?? 0;

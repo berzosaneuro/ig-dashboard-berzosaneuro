@@ -19,7 +19,7 @@
 //                              triggering (and burning Windsor.ai quota on)
 //                              this endpoint.
 
-const { scorePosts, groupIntoWeeks, buildCrossPlatform } = require('../lib/scoring.js');
+const { scorePosts, scoreTikTok, groupIntoWeeks, buildCrossPlatform } = require('../lib/scoring.js');
 
 const WINDSOR_BASE = 'https://connectors.windsor.ai';
 
@@ -190,17 +190,48 @@ module.exports = async function handler(req, res) {
       );
     }
 
-    // ---- TikTok: best-effort only, account had 0 videos as of 2026-08-27 ----
+    // ---- TikTok: videos + account snapshot ----
+    // NOTE: TikTok Organic only serves the last 60 days — asking for more makes
+    // Windsor reject the whole call, which is why this used to come back empty.
     try {
-      const tkPosts = await windsorGet(
-        'tiktok_organic',
-        ['video_id', 'video_caption', 'video_duration', 'video_reach', 'video_full_watched_rate'],
-        { date_preset: 'last_2years' }
-      );
-      for (const t of tkPosts) rows.push(row('tiktok', 'post', t.video_id, t));
-      report.steps.push(`TikTok posts: ${tkPosts.length}`);
+      const tkVideoFields = [
+        'date', 'video_id', 'video_caption', 'video_create_datetime', 'video_share_url',
+        'video_duration', 'video_views_count', 'video_likes', 'video_comments',
+        'video_shares', 'video_reach', 'video_full_watched_rate', 'video_average_time_watched',
+      ];
+      const tkRaw = await windsorGet('tiktok_organic', tkVideoFields, { date_preset: 'last_59d' });
+      const tkScored = scoreTikTok(tkRaw);
+      for (const t of tkScored) rows.push(row('tiktok', 'post', t.video_id, t));
+      report.steps.push(`TikTok videos: ${tkScored.length} (de ${tkRaw.length} filas diarias)`);
     } catch (e) {
-      report.errors.push(`TikTok (no bloqueante): ${e.message}`);
+      report.errors.push(`TikTok vídeos: ${e.message}`);
+    }
+
+    try {
+      const tkMetaRows = await windsorGet(
+        'tiktok_organic',
+        ['date', 'total_followers_count', 'following_count', 'videos_count', 'total_likes'],
+        { date_preset: 'last_14d' }
+      );
+      // Windsor returns one snapshot row per day — take the most recent.
+      const tkMeta = (tkMetaRows || [])
+        .filter((r) => r && r.date)
+        .sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+      if (tkMeta) {
+        rows.push(
+          row('tiktok', 'account_meta', 'meta', {
+            followers: tkMeta.total_followers_count ?? 0,
+            following: tkMeta.following_count ?? 0,
+            videos_count: tkMeta.videos_count ?? 0,
+            total_likes: tkMeta.total_likes ?? 0,
+            username: 'berzosa.neuro',
+            as_of: tkMeta.date,
+          })
+        );
+        report.steps.push(`TikTok meta: ${tkMeta.total_followers_count ?? 0} seguidores, ${tkMeta.videos_count ?? 0} vídeos (${tkMeta.date})`);
+      }
+    } catch (e) {
+      report.errors.push(`TikTok meta: ${e.message}`);
     }
 
     await supabaseDeleteCross();

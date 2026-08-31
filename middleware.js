@@ -29,6 +29,16 @@ function getCookie(request, name) {
   return null;
 }
 
+// Deterministic, non-reversible fingerprint of the owner credentials. Set as a
+// long-lived cookie the first time the owner authenticates, so the browser
+// stops asking for user/password on every session. Rotating DASHBOARD_PASS
+// invalidates every old cookie automatically.
+async function ownerCookieValue(user, pass) {
+  const data = new TextEncoder().encode(`${user}:${pass}:owner-v1`);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 async function checkToken(token) {
   if (!token) return false;
   try {
@@ -52,14 +62,30 @@ export default async function middleware(request) {
   const user = process.env.DASHBOARD_USER;
   const pass = process.env.DASHBOARD_PASS;
 
-  // 1. Usuario/contraseña del dueño (camino rápido, sin llamada de red)
+  // 1a. Cookie persistente del dueño — no vuelve a pedir usuario/contraseña
+  //     una vez autenticado (válida ~1 año, o hasta que se cambie la contraseña).
+  if (user && pass) {
+    const ownerCookie = getCookie(request, 'dash_owner');
+    if (ownerCookie && ownerCookie === (await ownerCookieValue(user, pass))) return;
+  }
+
+  // 1b. Usuario/contraseña del dueño (HTTP Basic). Al acertar, deja la cookie
+  //     persistente puesta y redirige para quitar el prompt en adelante.
   const auth = request.headers.get('authorization');
   if (user && pass && auth) {
     const [scheme, encoded] = auth.split(' ');
     if (scheme === 'Basic' && encoded) {
       const decoded = atob(encoded);
       const sep = decoded.indexOf(':');
-      if (decoded.slice(0, sep) === user && decoded.slice(sep + 1) === pass) return;
+      if (decoded.slice(0, sep) === user && decoded.slice(sep + 1) === pass) {
+        const value = await ownerCookieValue(user, pass);
+        const res = Response.redirect(new URL(request.url), 302);
+        res.headers.append(
+          'Set-Cookie',
+          `dash_owner=${value}; Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax`
+        );
+        return res;
+      }
     }
   }
 
