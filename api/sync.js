@@ -1,12 +1,21 @@
 // Vercel Serverless Function — runs once a day via the cron schedule in
-// vercel.json. Pulls fresh Instagram + Facebook data from Windsor.ai,
-// scores it, and upserts it into Supabase (table ig_dashboard_metrics).
-// The live dashboard (dashboard.html) never talks to Windsor directly —
-// it only ever reads the already-synced rows from Supabase.
+// vercel.json. Pulls fresh Instagram + Facebook data directly from the Meta
+// Graph API (account-level: followers, page fans) and from Windsor.ai
+// (post-level history + TikTok), scores it, and upserts it into Supabase
+// (table ig_dashboard_metrics). The live dashboard (dashboard.html) never
+// talks to Meta or Windsor directly — it only ever reads the already-synced
+// rows from Supabase.
 //
 // Required environment variables (set these in Vercel → Project Settings →
 // Environment Variables — NEVER hardcode secrets in this file):
-//   WINDSOR_API_KEY            Windsor.ai API key
+//   META_PAGE_ACCESS_TOKEN     Long-lived Facebook Page access token (never
+//                              expires unless revoked) with pages_show_list,
+//                              pages_read_engagement, instagram_basic and
+//                              instagram_manage_insights.
+//   META_PAGE_ID               Facebook Page ID ("Berzosa NEURO").
+//   META_IG_BUSINESS_ID        Instagram business account ID linked to that
+//                              Page (@berzosa.neuro).
+//   WINDSOR_API_KEY            Windsor.ai API key (post-level history + TikTok)
 //   SUPABASE_URL               https://fuuyljsewwarroiyojdw.supabase.co
 //   SUPABASE_SERVICE_ROLE_KEY  Supabase service role key (bypasses RLS; needed
 //                              to write — the dashboard only ever uses the
@@ -22,6 +31,22 @@
 const { scorePosts, scoreTikTok, groupIntoWeeks, buildCrossPlatform } = require('../lib/scoring.js');
 
 const WINDSOR_BASE = 'https://connectors.windsor.ai';
+const GRAPH_BASE = 'https://graph.facebook.com/v26.0';
+
+// Windsor's Free plan only allows 1 connected data source; once you exceed it,
+// Windsor keeps responding 200 OK but every field is replaced with this literal
+// warning string instead of real data. Treat that as a failure rather than
+// silently upserting the placeholder text as if it were real metrics.
+function assertRealWindsorData(rows) {
+  const first = rows && rows[0];
+  if (!first) return rows;
+  for (const v of Object.values(first)) {
+    if (typeof v === 'string' && v.includes('not your real numbers')) {
+      throw new Error('Windsor bloqueado (demasiadas cuentas conectadas para el plan actual)');
+    }
+  }
+  return rows;
+}
 
 async function windsorGet(connector, fields, extraParams) {
   const apiKey = process.env.WINDSOR_API_KEY;
@@ -40,7 +65,23 @@ async function windsorGet(connector, fields, extraParams) {
     throw new Error(`Windsor ${connector} ${res.status}: ${msg}`);
   }
   // Windsor's JSON renderer returns { data: [...] } for most connectors.
-  return (body && (body.data || body)) || [];
+  return assertRealWindsorData((body && (body.data || body)) || []);
+}
+
+// Direct Meta Graph API call, authenticated with the Page access token. Used
+// for account-level numbers (followers, page fans) so they never depend on
+// Windsor's per-account plan limits.
+async function metaGet(pathAndQuery) {
+  const token = process.env.META_PAGE_ACCESS_TOKEN;
+  if (!token) throw new Error('Falta META_PAGE_ACCESS_TOKEN');
+  const sep = pathAndQuery.includes('?') ? '&' : '?';
+  const res = await fetch(`${GRAPH_BASE}/${pathAndQuery}${sep}access_token=${token}`);
+  const body = await res.json().catch(() => null);
+  if (!res.ok || (body && body.error)) {
+    const msg = (body && body.error && body.error.message) || res.statusText;
+    throw new Error(`Meta Graph API ${pathAndQuery.split('?')[0]}: ${msg}`);
+  }
+  return body;
 }
 
 async function supabaseUpsert(rows) {
@@ -107,16 +148,26 @@ module.exports = async function handler(req, res) {
 
   try {
     // ---- Instagram: posts (last 2 years, all media) ----
-    const igFields = [
-      'timestamp', 'media_id', 'media_type', 'media_product_type', 'media_caption',
-      'media_permalink', 'media_like_count', 'media_comments_count', 'media_reach',
-      'media_views', 'media_saved', 'media_shares', 'media_engagement',
-      'media_profile_visits', 'media_follows', 'media_reel_avg_watch_time',
-      'media_reel_skip_rate',
-    ];
-    const igPostsRaw = await windsorGet('instagram', igFields, { date_preset: 'last_2years' });
-    const igPostsScored = scorePosts(igPostsRaw);
-    report.steps.push(`Instagram posts: ${igPostsScored.length}`);
+    // Still sourced from Windsor (per-post insights aren't worth reimplementing
+    // against the raw Graph API right now) — wrapped so a Windsor outage/plan
+    // block only drops post history, it doesn't take down the account-level
+    // numbers below that now come straight from Meta.
+    let igPostsRaw = [];
+    let igPostsScored = [];
+    try {
+      const igFields = [
+        'timestamp', 'media_id', 'media_type', 'media_product_type', 'media_caption',
+        'media_permalink', 'media_like_count', 'media_comments_count', 'media_reach',
+        'media_views', 'media_saved', 'media_shares', 'media_engagement',
+        'media_profile_visits', 'media_follows', 'media_reel_avg_watch_time',
+        'media_reel_skip_rate',
+      ];
+      igPostsRaw = await windsorGet('instagram', igFields, { date_preset: 'last_2years' });
+      igPostsScored = scorePosts(igPostsRaw);
+      report.steps.push(`Instagram posts: ${igPostsScored.length}`);
+    } catch (e) {
+      report.errors.push(`Instagram posts: ${e.message}`);
+    }
 
     // ---- Instagram: account-level daily insights -> grouped into weeks ----
     const igDailyFields = [
@@ -133,10 +184,21 @@ module.exports = async function handler(req, res) {
     }
 
     // ---- Instagram: account meta snapshot (followers/following/media count) ----
+    // Fetched directly from the Meta Graph API, not Windsor — this is the
+    // number the dashboard header badge reads, and it must never depend on
+    // Windsor's per-account plan limits.
     let igMeta = null;
     try {
-      const metaRows = await windsorGet('instagram', ['followers_count', 'follows_count', 'media_count']);
-      igMeta = metaRows[0] || null;
+      const igId = process.env.META_IG_BUSINESS_ID;
+      if (!igId) throw new Error('Falta META_IG_BUSINESS_ID');
+      const ig = await metaGet(`${igId}?fields=followers_count,follows_count,media_count,username`);
+      igMeta = {
+        followers_count: ig.followers_count,
+        follows_count: ig.follows_count,
+        media_count: ig.media_count,
+        username: ig.username,
+      };
+      report.steps.push(`Instagram meta (Graph API): ${ig.followers_count} seguidores`);
     } catch (e) {
       report.errors.push(`Instagram account meta: ${e.message}`);
     }
@@ -169,6 +231,27 @@ module.exports = async function handler(req, res) {
       report.errors.push(`Facebook daily: ${e.message}`);
     }
 
+    // ---- Facebook: current fan count ----
+    // Fetched directly from the Meta Graph API, not Windsor — this is what
+    // the dashboard's "current followers" badge reads (the most recent date
+    // in FB_DAILY), so it must never depend on Windsor's per-account plan
+    // limits. Overwrites/adds today's row without touching earlier history.
+    try {
+      const pageId = process.env.META_PAGE_ID;
+      if (!pageId) throw new Error('Falta META_PAGE_ID');
+      const page = await metaGet(`${pageId}?fields=fan_count`);
+      const today = new Date().toISOString().slice(0, 10);
+      const todayIndex = fbDaily.findIndex((d) => d.date === today);
+      if (todayIndex >= 0) {
+        fbDaily[todayIndex] = { ...fbDaily[todayIndex], page_fans: page.fan_count };
+      } else {
+        fbDaily.push({ date: today, page_fans: page.fan_count, page_impressions: 0, page_post_engagements: 0 });
+      }
+      report.steps.push(`Facebook fan count (Graph API): ${page.fan_count}`);
+    } catch (e) {
+      report.errors.push(`Facebook fan count: ${e.message}`);
+    }
+
     // ---- Cross-platform pairing ----
     const cross = buildCrossPlatform(igPostsRaw, fbPosts);
 
@@ -185,7 +268,7 @@ module.exports = async function handler(req, res) {
           followers: igMeta.followers_count,
           follows: igMeta.follows_count,
           media_count: igMeta.media_count,
-          username: 'berzosa.neuro',
+          username: igMeta.username || 'berzosa.neuro',
         })
       );
     }
